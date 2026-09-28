@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    image: xtcms:2.0
+    container_name: xtcms-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    extra_hosts:
+      # 让容器里的 host.docker.internal 指向宿主机（Linux 也生效）
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_TIMEZONE: Asia/Shanghai
+      # 改成你的域名或 http://服务器IP:8080
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      # 留空则容器启动时自动生成
+      APP_KEY: ${APP_KEY:-}
+      LOG_LEVEL: warning
+      DB_CONNECTION: mysql
+      # 数据库在宿主机就填 host.docker.internal，远程 MySQL 就填它的 IP
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-xtcms}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      # 设为 false 可跳过启动时自动建表
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+    volumes:
+      # 上传的图片、数据库备份保存在这里，重建容器不会丢
+      - app_data:/var/www/html/storage/app
+
+volumes:
+  app_data:

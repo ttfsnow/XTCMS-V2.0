@@ -1,0 +1,23 @@
+# 不进入镜像的内容（避免泄露密钥、减小构建上下文）
+.git
+.gitignore
+.env
+
+# 依赖在镜像构建阶段重新安装
+vendor/
+node_modules/
+
+# 运行时数据，不打包进镜像
+storage/logs/
+storage/app/public/uploads/
+storage/app/backups/
+*.log
+
+# 部署相关文件本身
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文档
+README.md
+LICENSE

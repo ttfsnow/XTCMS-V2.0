@@ -143,6 +143,83 @@ resources/views/
 | `tags`        | 文章标签（V2.0 新增，读者端内容组织，与 SEO 关键词无关）                      |
 | `newstag`     | 文章-标签多对多关联表（V2.0 新增）                                            |
 
+## Docker 部署（小白版）
+
+用 Docker 部署只需要一个应用容器，**数据库用你自己的**（宿主机上的 MySQL，或远程的 MySQL 都行），再配一下 Nginx 就能上线。
+
+### 第 1 步：准备好数据库
+
+在你的 MySQL 里建一个数据库（远程库让 DBA 建好即可）：
+
+```sql
+CREATE DATABASE xtcms DEFAULT CHARACTER SET utf8mb4;
+```
+
+> 小提示：如果数据库就装在**这台宿主机**上，需要允许来自 Docker 网段的连接（最简单的做法是把数据库用户的 host 设为 `%`；宝塔等面板记得在防火墙/纯模式设置里放行）。
+
+### 第 2 步：改一下 docker-compose.yml
+
+打开项目根目录的 `docker-compose.yml`，只需看 `environment:` 这几行，改成你自己的信息：
+
+```yaml
+environment:
+  DB_HOST: host.docker.internal   # 数据库在宿主机上就填这个；是远程 MySQL 就填它的 IP，如 192.168.1.100
+  DB_PORT: 3306                   # 数据库端口，一般不用改
+  DB_DATABASE: xtcms              # 第 1 步建的数据库名
+  DB_USERNAME: root               # 数据库用户名
+  DB_PASSWORD: 你的密码            # 数据库密码
+  APP_URL: http://你的域名         # 改成实际访问地址
+```
+
+> 不想改文件的话，也可以不改——默认会连宿主机的 `host.docker.internal:3306`，库名 `xtcms`，用户 `root`，密码为空。但**密码一定要改**。
+
+### 第 3 步：启动
+
+在项目文件夹里执行：
+
+```bash
+docker compose up -d --build
+```
+
+首次运行会下载镜像并构建，需要几分钟。看到日志里出现 `XTCMS 启动完成` 就成功了（可用 `docker compose logs -f app` 查看）。
+
+启动成功后，容器会自动：建表并写入默认数据（只在数据库是空的时候）、生成软链接和缓存。**你不需要敲任何额外的命令。**
+
+现在直接访问 `http://服务器IP:8080` 就能看到网站了，后台在 `http://服务器IP:8080/admin`（默认账号 `admin` / `admin123`，**上线前务必修改密码**）。
+
+### 第 4 步（可选）：配置 Nginx 用域名访问
+
+不想让访客看到 `:8080` 端口？在宿主机的 Nginx 里加一个站点，把域名流量转给容器：
+
+```nginx
+server {
+    listen 80;
+    server_name 你的域名;          # 例如 blog.example.com
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;   # 转发给容器的 8080 端口
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 10m;            # 允许上传稍大的图片
+    }
+}
+```
+
+改完后 `nginx -t` 检查、`nginx -s reload` 生效。记得同时把 `docker-compose.yml` 里的 `APP_URL` 改成 `http://你的域名`。
+
+### 日常会用的几条命令
+
+```bash
+docker compose logs -f app          # 看运行日志（排查问题先看这个）
+docker compose down                 # 停止（数据不会丢）
+docker compose up -d --build        # 改了代码/配置后重新启动
+```
+
+> 上传的图片和数据库备份保存在 Docker 卷 `app_data` 里，停止、重启、重建容器都不会丢。
+> 备份数据库：`docker compose exec app php artisan xtcms:backup`。
+
 ## 生产部署提示
 
 - Nginx 站点根目录指向 `public/`，配置 `try_files $uri $uri/ /index.php?$query_string;`
