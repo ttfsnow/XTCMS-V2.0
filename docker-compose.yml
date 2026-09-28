@@ -1,35 +1,111 @@
+# docker-compose.yml —— "部署说明书"
+# 作用：一条命令（docker compose up -d --build）就能按这份说明书
+#       把网站容器建好、配置好、启动好。
+# 好处：所有配置写在一个文件里，方便修改、方便版本管理，
+#       不用每次都敲一长串 docker run 命令。
+
 services:
+  # services = 要启动哪些"服务"（容器）。本项目只需要一个网站容器。
   app:
     build: .
+    # ↑ 用当前文件夹（. 代表 docker-compose.yml 所在目录）里的
+    #   Dockerfile 来构建镜像。改了代码后重新构建就是执行它。
+
     image: xtcms:2.0
+    # ↑ 构建出来的镜像起名叫 xtcms:2.0。
+    #   好处：重复执行 up 命令时，Docker 会直接用构建好的镜像，
+    #   不用每次都从头构建。
+
     container_name: xtcms-app
+    # ↑ 给运行起来的容器起个名字，方便后面 docker 命令引用它
+    #   （比如 docker logs xtcms-app 看日志）。不指定的话 Docker 会
+    #   随机起名（如 sharp_arduino_92），很难认。
+
     restart: unless-stopped
+    # ↑ 自动重启策略：容器崩溃或服务器重启后自动把它拉起来；
+    #   只有你手动执行了停止命令（docker compose down/stop）才不重启。
+    #   相当于"守护进程"，生产环境必配，省得半夜爬起来重启。
+
     ports:
       - "${APP_PORT:-8080}:80"
+      # ↑ 端口映射：宿主机端口 : 容器端口。
+      #   访问宿主机的 8080 端口 = 访问容器的 80 端口（网站）。
+      #   前半段写法 ${APP_PORT:-8080} 意思是：
+      #   优先读环境变量 APP_PORT，没设置就用默认的 8080。
+      #   想换成 80 端口？把 8080 改成 80 即可。
+
     extra_hosts:
       # 让容器里的 host.docker.internal 指向宿主机（Linux 也生效）
       - "host.docker.internal:host-gateway"
+      # ↑ 造一个"通讯录条目"：容器里访问 host.docker.internal 这个
+      #   域名时，实际指向宿主机。这是给"数据库装在宿主机上"的场景
+      #   用的——容器里不能直接写 127.0.0.1（那指容器自己），
+      #   要连宿主机的 MySQL 就得靠这个名字。
+
     environment:
+      # environment = 给容器注入的环境变量，容器里的网站程序读这些
+      # 值来工作。等号前的名字固定（程序认这些名字），冒号后是值。
+      # ${XX:-默认值} 写法：优先读执行命令时传入的变量，没有就用默认值。
+
       APP_ENV: production
+      # 运行模式：production = 生产模式（关闭开发调试行为）
+
       APP_DEBUG: "false"
+      # 出错时不显示详细错误页面（防止暴露代码和数据结构），生产必须 false
+
       APP_TIMEZONE: Asia/Shanghai
+      # 程序使用的时区，影响文章时间显示、日志时间等
+
       # 改成你的域名或 http://服务器IP:8080
       APP_URL: ${APP_URL:-http://localhost:8080}
+      # 站点的访问地址，程序生成链接（如 RSS、跳转）时用它作前缀
+
       # 留空则容器启动时自动生成
       APP_KEY: ${APP_KEY:-}
+      # 应用密钥，用于加密 Session 等数据。不填的话启动脚本会自动生成，
+      # 但重建容器后会换新钥匙（旧登录状态失效）。长期运营建议固定一个。
+
       LOG_LEVEL: warning
+      # 日志级别：只记录 warning 及以上的日志，避免日志文件暴涨
+
       DB_CONNECTION: mysql
+      # 数据库类型：MySQL（固定）
+
       # 数据库在宿主机就填 host.docker.internal，远程 MySQL 就填它的 IP
       DB_HOST: ${DB_HOST:-host.docker.internal}
+      # 数据库地址。默认 host.docker.internal = 宿主机；
+      # 数据库在别的服务器上就填那台机器的 IP，如 192.168.1.100
+
       DB_PORT: ${DB_PORT:-3306}
+      # 数据库端口，MySQL 默认 3306，一般不用改
+
       DB_DATABASE: ${DB_DATABASE:-xtcms}
+      # 数据库名（需提前在 MySQL 里建好，见 README 第 1 步）
+
       DB_USERNAME: ${DB_USERNAME:-root}
+      # 数据库用户名。建议生产环境别用 root，单独建一个只管 xtcms 库的账号
+
       DB_PASSWORD: ${DB_PASSWORD:-}
+      # 数据库密码。⚠️ 上线前务必在这里填上真实密码！
+
       # 设为 false 可跳过启动时自动建表
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      # true = 容器每次启动时自动执行数据库迁移（建表），
+      # 并在空库里写入默认管理员和示例文章。
+      # 已有数据想完全手动控制时改成 false。
+
     volumes:
       # 上传的图片、数据库备份保存在这里，重建容器不会丢
       - app_data:/var/www/html/storage/app
+      # ↑ 把下面登记的数据卷 app_data 挂到容器的 storage/app 目录。
+      #   这个目录放的是"运行时产生、不能丢"的数据：
+      #   文章上传的图片（public/uploads/）和数据库备份（backups/）。
+      #   容器删了重建，这些文件还在。
+      #   想存到自己指定的目录？把左边的 app_data 换成宿主机绝对路径，
+      #   如 /www/xtcms-data:/var/www/html/storage/app，
+      #   并删掉下面的 volumes 声明。
 
+# 底部声明区：登记上面用到的数据卷，Docker 会自动创建并管理它，
+# 实际数据存在宿主机 /var/lib/docker/volumes/xtcms-v2-0_app_data/_data
 volumes:
   app_data:
